@@ -3,6 +3,21 @@ import {today} from './domain.js';
 import {answerPlan,offsetMonth} from '../supabase/functions/ledger-chat/answer.js';
 
 const examples=['이번 달 대출이자 얼마야?', '다음 달 이자 예상해줘', '이번 달 정산 얼마야?'];
+// 숫자와 근거 문장은 그대로 두고, 가끔 마지막 어미만 바꾼다.
+function catReply(answer, turnNumber) {
+  if ((turnNumber - 1) % 3 !== 0) return answer;
+  const endings = [
+    ['했어요.', '했다냥!'],
+    ['맞았어요.', '맞았다냥!'],
+    ['없어요.', '없다냥.'],
+    ['있어요.', '있다냥.'],
+    ['이에요.', '이라냥.'],
+  ];
+  for (const [ending, replacement] of endings) {
+    if (answer.endsWith(ending)) return answer.slice(0, -ending.length) + replacement;
+  }
+  return answer;
+}
 let conversation;
 export function resetChat() { conversation=undefined; }
 export function mountChat(root,ledger,demo) {
@@ -57,6 +72,7 @@ export function mountChat(root,ledger,demo) {
         turn.answer=data.answer;
         if(data.plan) chat.previous=data.plan;
       }
+      turn.answer=catReply(turn.answer,chat.turns.length);
     } catch(err) {turn.answer=err.message;}
     finally {
       chat.busy=false;
