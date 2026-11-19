@@ -25,8 +25,28 @@ function setModal(html) { cleanModal();$('#modal').innerHTML=html; $('#modal').s
 function closeModal() { cleanModal();$('#modal').close(); }
 const field=(label,input,extra='')=>`<label class="field ${extra}"><span>${label}</span>${input}</label>`;
 const modalHead=(eyebrow,title)=>`<div class="modal-head"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><button class="icon-button" data-action="close" aria-label="닫기">${icon('close')}</button></div>`;
+const loginCats=[
+  {src:'./icons/moaboja-cat-v1-512.png',alt:'하트 동전을 안고 있는 고양이'},
+  {src:'./icons/moaboja-cat-couple-v1-320.png',alt:'다정하게 안고 있는 고양이 두 마리'},
+  {src:'./icons/moaboja-cat-wallet-v1-320.png',alt:'고양이 모양 동전 지갑'},
+  {src:'./icons/moaboja-cat-bank-v1-320.png',alt:'식빵 고양이 저금통'},
+];
+async function nextLoginCat(button) {
+  const next=(Number(button.dataset.catIndex)+1)%loginCats.length;
+  const cat=loginCats[next],image=new Image();
+  button.disabled=true;
+  try {
+    image.src=cat.src;
+    await image.decode();
+    const visible=button.querySelector('img');
+    visible.src=cat.src;visible.alt=cat.alt;
+    button.dataset.catIndex=String(next);
+    button.setAttribute('aria-label',`다음 고양이 보기 · ${cat.alt} (${next+1}/4)`);
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)button.animate([{transform:'scale(.94)'},{transform:'scale(1)'}],{duration:220,easing:'ease-out'});
+  } finally {button.disabled=false;}
+}
 function login(message='') {
-  $('#app').innerHTML=`<main class="auth-screen"><section class="auth-card" aria-labelledby="login-title"><header class="auth-heading"><img class="auth-mascot" src="./icons/moaboja-cat-v1-512.png" width="144" height="144" alt="하트 동전을 안고 있는 고양이" fetchpriority="high"><h1 id="login-title">모아보자!</h1><p>화이팅!</p></header>${message?`<p class="notice warning" role="alert">${esc(message)}</p>`:''}<form id="login-form">${field('아이디','<input name="username" type="text" autocomplete="username" placeholder="아이디" required>')}${field('비밀번호','<input name="password" type="password" autocomplete="current-password" placeholder="비밀번호" required minlength="6">')}<button class="primary full" ${!configured?'disabled':''}>로그인</button></form><button class="text-button full" data-action="forgot" ${!configured?'disabled':''}>비밀번호 재설정</button><div class="auth-preview">${!configured?'<p>로그인 준비 중이에요. 먼저 둘러보세요.</p>':''}<button class="secondary full" data-action="demo">예시 데이터로 둘러보기</button></div></section></main>`;
+  $('#app').innerHTML=`<main class="auth-screen"><section class="auth-card" aria-labelledby="login-title"><header class="auth-heading"><button class="auth-mascot" type="button" data-action="next-cat" data-cat-index="0" aria-label="다음 고양이 보기 · 하트 동전을 안고 있는 고양이 (1/4)" title="눌러서 다음 고양이 보기"><img src="./icons/moaboja-cat-v1-512.png" width="144" height="144" alt="하트 동전을 안고 있는 고양이" fetchpriority="high"></button><h1 id="login-title">모아보자!</h1><p>화이팅!</p></header>${message?`<p class="notice warning" role="alert">${esc(message)}</p>`:''}<form id="login-form">${field('아이디','<input name="username" type="text" autocomplete="username" placeholder="아이디" required>')}${field('비밀번호','<input name="password" type="password" autocomplete="current-password" placeholder="비밀번호" required minlength="6">')}<button class="primary full" ${!configured?'disabled':''}>로그인</button></form><button class="text-button full" data-action="forgot" ${!configured?'disabled':''}>비밀번호 재설정</button><div class="auth-preview">${!configured?'<p>로그인 준비 중이에요. 먼저 둘러보세요.</p>':''}<button class="secondary full" data-action="demo">예시 데이터로 둘러보기</button></div></section></main>`;
 }
 function render() {
   if(!state.data) return login();
@@ -177,6 +197,7 @@ document.addEventListener('click',async event=>{
     if(button.dataset.setting)return settingModal(button.dataset.setting,button.dataset.id,button.dataset.category);
     if(button.dataset.deleteTransfer)return confirmAction('송금 기록을 삭제할까요?','실제 계좌 송금은 취소되지 않습니다. 남은 정산액은 다시 계산됩니다.',()=>mutate('delete_transfer',{p_id:button.dataset.deleteTransfer}),'송금 기록을 삭제했어요.');
     switch(button.dataset.action){
+      case 'next-cat':await nextLoginCat(button);break;
       case 'close':if(!state.busy)closeModal();break;
       case 'demo':state.demo=true;state.data=createDemo();state.page='dashboard';render();break;
       case 'switch-demo':state.data.user.id=currentSlot()===1?'demo2':'demo1';render();break;
