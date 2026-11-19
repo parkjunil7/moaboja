@@ -42,12 +42,16 @@
 
 ## 클라우드 검증
 
+- GitHub Pages 배포 성공: 운영 사이트 확인 완료.
+- https://parkjunil7.github.io/moaboja/ 에서 아이디 로그인 화면 확인, 브라우저 error/warn 로그 없음.
+- 배포 캡처는 로컬 `artifacts/moaboja-live.jpg`.
 - Supabase `moaboja` / 서울 리전 / 프로젝트 `gqttecguoftuwjanunry` 생성, 001~004 마이그레이션 적용.
 - 7개 public 테이블의 RLS 활성화 확인. Health Advisor 경고 없음.
 - 공개 회원가입·익명 로그인 꺼짐. 두 계정만 members에 등록.
 - 실제 Supabase Auth의 서로 다른 두 사용자 세션으로 `npm run test:live -- --admin-link` 통과. 관리자 키는 인증 링크 발급에만 쓰고 지출/정산 RPC는 사용자 토큰으로 호출.
 - 첫 계정 입력을 두 번째 계정이 조회, 60,000원 반반 → 30,000원, 직접 10,000/50,000 → 50,000원, 송금 후 잔액 0원·총지출 60,000원 유지 확인.
 - 테스트가 만든 지출·송금 UUID 삭제 완료.
+- 최종 DB 조회 결과: members 2명, expenses 0건, transfers 0건. 익명 역할이 실행 가능한 public 함수 없음.
 - Security Advisor의 definer RPC 경고는 멤버 검사 후 검증된 쓰기만 허용하는 의도된 API에 대한 경고. 모든 함수의 search_path 고정 및 멤버 검사 적용. ledger_lock의 정책 없음은 직접 접근을 전부 차단하는 내부 잠금 테이블 설계에 따른 정보 항목.
 - 관련 설명: [RPC 권한 경고](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), [RLS 정책 없음](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
 
