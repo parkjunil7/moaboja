@@ -1,0 +1,6 @@
+project_id = "moaboja"
+
+[functions.receipt-ai]
+# 함수 안에서 Supabase Auth getUser와 members RLS 조회로 매 요청을 검증합니다.
+verify_jwt = false
+entrypoint = "./functions/receipt-ai/index.ts"

@@ -1,4 +1,5 @@
 export function validatePublicConfig(env) {
+  if(Object.keys(env).some(name=>/^VITE_.*(?:OPENAI|SERVICE_ROLE|SECRET|PASSWORD)/i.test(name)&&env[name]))throw new Error('서버 비밀 키에 VITE_ 접두사를 붙이지 마세요.');
   const url=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_PUBLISHABLE_KEY;
   if(!url||!key)throw new Error('가계부 전용 Supabase URL과 publishable key를 설정하세요.');
   const parsed=new URL(url);

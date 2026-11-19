@@ -56,39 +56,43 @@ function settingsPage() {
 }
 function receiptModal(){
   if(state.data.members.length<2)return toast('두 번째 멤버를 먼저 초대해 주세요.',true);
-  setModal(`${modalHead('RECEIPT','영수증으로 입력')}<div class="receipt-intro"><p>영수증의 날짜·상호·합계를 읽어 입력해요.<br>저장 전에 내용을 확인하고 고칠 수 있어요.</p><div class="receipt-pickers"><button type="button" class="primary" id="receipt-camera">사진 찍기</button><button type="button" class="secondary" id="receipt-gallery">사진 선택</button></div><input id="receipt-camera-file" type="file" accept="image/*" capture="environment" hidden><input id="receipt-gallery-file" type="file" accept="image/*" hidden><p class="small muted">영수증 전체가 나오게 밝은 곳에서 찍어 주세요.<br>사진은 이 기기에서만 읽고 서버에 저장하지 않아요.</p></div><div id="receipt-progress" hidden><progress max="100" value="0" aria-label="영수증 인식 진행률"></progress><p role="status" aria-live="polite"></p><button type="button" class="text-button" id="receipt-cancel">인식 취소</button></div><p id="receipt-error" class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="secondary" id="receipt-manual">직접 입력하기</button></div>`);
+  setModal(`${modalHead('RECEIPT','영수증으로 입력')}<div class="receipt-intro"><p>사진에서 날짜·상호·결제금액을 읽어요.<br>확인한 뒤에만 지출로 저장돼요.</p><fieldset class="receipt-method"><legend>인식 방법</legend><label><input type="radio" name="receipt-method" value="ai" ${state.demo?'disabled':'checked'}> AI로 읽기</label><label><input type="radio" name="receipt-method" value="local" ${state.demo?'checked':''}> 이 기기에서 읽기</label></fieldset>${state.demo?'<p class="small muted">예시 모드에서는 기기 인식만 가능해요. AI 인식은 로그인 후 이용할 수 있어요.</p>':''}<label id="receipt-consent" class="receipt-confirm"><input type="checkbox"><span>선택한 사진을 OpenAI로 보내 인식하는 데 동의해요. API 크레딧이 사용돼요.</span></label><p id="receipt-privacy" class="small muted"></p><div class="receipt-pickers"><button type="button" class="primary" id="receipt-camera">사진 찍기</button><button type="button" class="secondary" id="receipt-gallery">사진 선택</button></div><input id="receipt-camera-file" type="file" accept="image/*" capture="environment" hidden><input id="receipt-gallery-file" type="file" accept="image/*" hidden></div><div id="receipt-progress" hidden><progress max="100" value="0" aria-label="영수증 인식 진행률"></progress><p role="status" aria-live="polite"></p><button type="button" class="text-button" id="receipt-cancel">인식 취소</button></div><p id="receipt-error" class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="secondary" id="receipt-manual">직접 입력하기</button></div>`);
   const controller=new AbortController();let closed=false,reading=false;
   modalCleanup=()=>{closed=true;controller.abort();};
   const camera=$('#receipt-camera-file'),gallery=$('#receipt-gallery-file');
+  const isAI=()=>!state.demo&&$('#modal input[name="receipt-method"]:checked').value==='ai';
+  const update=()=>{const ai=isAI();$('#receipt-consent').hidden=!ai;$('#receipt-privacy').textContent=ai?'사진 전체가 선명하게 나오도록 찍어 주세요. 사진은 가계부 서버에 보관하지 않아요. 전송 후 취소해도 이미 사용된 크레딧은 차감될 수 있어요.':'사진은 이 기기에서만 읽어요. 영수증 네 모서리를 맞추면 기울기를 보정해요. 흐린 사진은 인식하지 못할 수 있어요.';$('#receipt-camera').disabled=$('#receipt-gallery').disabled=reading||(ai&&!$('#receipt-consent input').checked);};
+  $('#receipt-consent input').onchange=update;document.querySelectorAll('#modal input[name="receipt-method"]').forEach(el=>el.onchange=update);update();
   $('#receipt-camera').onclick=()=>camera.click();$('#receipt-gallery').onclick=()=>gallery.click();
   $('#receipt-manual').onclick=()=>expenseModal();$('#receipt-cancel').onclick=()=>receiptModal();
+  const progress=(text,value)=>{if(closed)return;$('#receipt-progress progress').value=value;$('#receipt-progress p').textContent=text;};
   const read=async event=>{
-    let file=event.target.files?.[0];if(!file||reading)return;reading=true;
-    $('#receipt-error').textContent='';
-    $('#receipt-camera').disabled=true;$('#receipt-gallery').disabled=true;
+    let file=event.target.files?.[0];if(!file||reading)return;
+    const ai=isAI();if(ai&&!$('#receipt-consent input').checked)return;
+    reading=true;update();$('#receipt-error').textContent='';$('#modal .receipt-intro').hidden=true;
     try{
-      const {prepareReceipt}=await import('./receipt-editor.js');
-      if(closed)return;
-      $('#modal .receipt-intro').hidden=true;
-      const editor=document.createElement('div');editor.className='receipt-editor';$('#receipt-progress').before(editor);
-      file=await prepareReceipt(file,editor,{signal:controller.signal});
-      editor.remove();if(closed)return;
-      $('#receipt-progress').hidden=false;
-      const {recognizeReceipt}=await import('./receipt-ocr.js');
-      const result=await recognizeReceipt(file,{signal:controller.signal,onProgress:(text,value)=>{if(closed)return;$('#receipt-progress progress').value=value;$('#receipt-progress p').textContent=text;}});
-      if(closed)return;
-      const draft=reviewReceipt(result,today());
-      if(!draft.spent_on&&!draft.amount)throw new Error('날짜와 합계를 정확히 읽지 못했어요. 영수증만 크게 나오도록 다시 찍거나 원본 사진을 선택해 주세요. 직접 입력도 가능해요.');
-      draft.text=result.text;
-      draft.photo=file;
-      expenseModal(null,null,draft);
+      let draft;
+      if(ai){
+        $('#receipt-progress').hidden=false;
+        const {recognizeReceiptAI}=await import('./receipt-ai.js');if(closed)return;
+        draft=await recognizeReceiptAI(file,{signal:controller.signal,onProgress:progress});
+      }else{
+        const {prepareReceipt}=await import('./receipt-editor.js');if(closed)return;
+        const editor=document.createElement('div');editor.className='receipt-editor';$('#receipt-progress').before(editor);
+        file=await prepareReceipt(file,editor,{signal:controller.signal});editor.remove();if(closed)return;
+        $('#receipt-progress').hidden=false;
+        const {recognizeReceipt}=await import('./receipt-ocr.js');
+        const result=await recognizeReceipt(file,{signal:controller.signal,onProgress:progress});if(closed)return;
+        draft=reviewReceipt(result,today());
+        if(!draft.spent_on&&!draft.amount)throw new Error('날짜와 합계를 정확히 읽지 못했어요. AI 인식을 선택하거나 사진을 다시 찍어 주세요.');
+        draft.text=result.text;
+      }
+      if(closed)return;draft.photo=file;expenseModal(null,null,draft);
     }catch(error){
       if(closed||error.name==='AbortError')return;
       $('#receipt-error').textContent=error.message||'사진을 읽지 못했어요. 다시 찍거나 직접 입력해 주세요.';
-      $('#modal .receipt-intro').hidden=false;
-      $('#modal .receipt-editor')?.remove();
-      $('#receipt-progress').hidden=true;$('#receipt-camera').disabled=false;$('#receipt-gallery').disabled=false;
-      camera.value='';gallery.value='';reading=false;
+      $('#modal .receipt-intro').hidden=false;$('#modal .receipt-editor')?.remove();$('#receipt-progress').hidden=true;
+      camera.value='';gallery.value='';reading=false;update();
     }
   };
   camera.onchange=read;gallery.onchange=read;

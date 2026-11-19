@@ -2,7 +2,7 @@
 
 ## 자동 테스트
 
-`npm test`: **37개 통과** (PostgreSQL 통합, 설정 링크, 영수증 추출 테스트 포함), 실패 0개.
+`npm test`: **45개 통과** (PostgreSQL 통합, 설정 링크, 영수증 추출, AI 요청/검증/권한/횟수 제한 포함), 실패 0개.
 
 - 서로 다른 두 `auth.uid()` 세션이 동일한 지출을 조회
 - 로그인했어도 미초대 사용자의 RLS 조회 0행, RPC 접근 거부
@@ -56,6 +56,11 @@
 모바일 화면 캡처: `screenshots/mobile.jpg`. 모든 화면의 숫자는 예시 데이터입니다.
 
 ## 클라우드 검증
+
+- AI 실제 검증(2026-11-19): 사용자 제공 원본 PNG를 OpenAI로 전송해 `2017-12-16 / 킹콩부대찌개(마포광흥점) / 30,000원 / 외식비·식당` 정확히 반환. 응답 약 7.34초, 입력 835·출력 147토큰. 실제 지출 건수 변경 없음.
+- `receipt-ai`는 서버 키로 한도만 확인하고 사용자 검증은 Auth getUser + 사용자 JWT의 members RLS 조회로 수행. 두 멤버 준비 상태 200, 익명 요청 401 확인. 호출 예약 RPC 권한은 service_role만 true, anon/authenticated는 false.
+- 새 AI 한도 테이블은 비노출 private 스키마, RLS 활성, 클라이언트 권한 없음. 정책 없음 INFO는 서버 전용 설계입니다. [관련 Advisor 설명](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+- 기존 지출 RPC의 SECURITY DEFINER 경고는 이전 검증과 동일합니다. 기존 Auth의 유출 비밀번호 보호 비활성 경고도 확인했으며 이번 영수증 변경에서 로그인 정책을 변경하지 않았습니다. [비밀번호 보호 설명](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
 - 설정 링크 수정: 토큰을 앱에서 직접 검증하고 대상 user ID와 실제 세션을 대조. 만료/재사용 오류를 기존 로그인으로 대체하지 않음. 비밀번호 창에 계정 표시 및 저장 직전 사용자 재확인.
 - `scripts/check-recovery.mjs` 실서비스 검증 통과: 멤버1의 인증 세션에서 멤버2의 복구 토큰 인증 → 멤버2 멤버 확인 → 같은 토큰 재사용 거부. 비밀번호 및 지출 변경 없음.
