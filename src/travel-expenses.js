@@ -4,6 +4,11 @@ import { won } from './domain.js';
 const trips = new Map([
   ['china-2026', '중국'], ['jeju-2026', '제주'], ['gangneung-2026', '강릉'], ['sapporo-2026', '삿포로']
 ]);
+const categoryOrder = ['항공', '숙소', '관광', '교통', '식비', '기타'];
+function categoryRank(row) {
+  const index = categoryOrder.indexOf(row.category?.trim());
+  return index < 0 ? categoryOrder.length : index;
+}
 let travel;
 
 function element(tag, text) {
@@ -72,6 +77,7 @@ class TravelExpenses extends HTMLElement {
         const details = document.createElement('details');
         const name = trips.has(key) ? trips.get(key) + ' ' + key.slice(-4) : key || '기타 여행';
         details.append(element('summary', name + ' · ' + rows.length + '건 · ' + won(rows.reduce((total,row) => total + row.amount, 0))));
+        rows.sort((a, b) => categoryRank(a) - categoryRank(b));
         const list = document.createElement('ul');
         for (const row of rows) {
           const item = document.createElement('li');
