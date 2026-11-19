@@ -1,5 +1,6 @@
 import {client} from './data.js';
 import {today} from './domain.js';
+import {answerDate} from './chat-date.js';
 import {answerPlan,offsetMonth} from '../supabase/functions/ledger-chat/answer.js';
 
 const examples=['이번 달 대출이자 얼마야?', '다음 달 이자 예상해줘', '이번 달 정산 얼마야?'];
@@ -60,7 +61,10 @@ export function mountChat(root,ledger,demo) {
     chat.turns.push(turn);
     chat.busy=true; chat.draft=''; paint();
     try {
-      if(demo) {
+      const calendarAnswer=answerDate(question);
+      if(calendarAnswer) {
+        turn.answer=calendarAnswer;
+      } else if(demo) {
         const date=today(),month=date.slice(0,7);
         turn.answer=answerPlan({mode:['actual','forecast','settlement'][index],month:index===1?offsetMonth(month,1):month,scope:'interest'},ledger,date);
       } else {
