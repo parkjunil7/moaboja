@@ -1,6 +1,7 @@
 import './style.css';
 import { loginEmail } from './accounts.js';
 import { recoveryEntry, verifyRecovery, recoveryError } from './recovery.js';
+import { parseReceipt, receiptCategory, similarReceipt } from './receipt.js';
 import { won,today,previousMonth,split,summarize } from './domain.js';
 import { client,configured,snapshot,rpc,createDemo,demoMutation } from './data.js';
 
@@ -18,8 +19,10 @@ const monthLabel=m=>`${m.slice(0,4)}년 ${Number(m.slice(5))}월`;
 function toast(message,error=false) { const el=$('#toast'); el.textContent=message; el.className=error?'visible error':'visible'; clearTimeout(toast.timer); toast.timer=setTimeout(()=>el.className='',5000); }
 function showError(e) { toast(e.message||'처리하지 못했어요. 잠시 후 다시 시도해 주세요.',true); }
 function options(rows,value,placeholder='') { return (placeholder?`<option value="">${placeholder}</option>`:'')+rows.map(r=>`<option value="${esc(r.id??r.slot)}" ${String(r.id??r.slot)===String(value)?'selected':''}>${esc(r.name)}</option>`).join(''); }
-function setModal(html) { $('#modal').innerHTML=html; $('#modal').showModal(); }
-function closeModal() { $('#modal').close(); }
+let modalCleanup=null;
+function cleanModal(){modalCleanup?.();modalCleanup=null;}
+function setModal(html) { cleanModal();$('#modal').innerHTML=html; $('#modal').showModal(); }
+function closeModal() { cleanModal();$('#modal').close(); }
 const field=(label,input,extra='')=>`<label class="field ${extra}"><span>${label}</span>${input}</label>`;
 const modalHead=(eyebrow,title)=>`<div class="modal-head"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><button class="icon-button" data-action="close" aria-label="닫기">${icon('close')}</button></div>`;
 function login(message='') {
@@ -51,15 +54,56 @@ function settlementPage() {
 function settingsPage() {
   return `<article class="panel member-settings"><div class="panel-title"><h2>함께 쓰는 사람</h2><span class="badge">${state.data.members.length} / 2명</span></div><div class="member-pills">${state.data.members.map(m=>`<span class="member-pill"><span class="person-dot slot-${m.slot}">${esc(m.name.slice(0,1))}</span><strong>${esc(m.name)}</strong><small>${m.slot===currentSlot()?'내 계정':'함께하는 멤버'}</small></span>`).join('')}</div><p class="small muted">두 사람의 지정된 아이디만 사용해요. 비밀번호를 잊으면 관리자에게 설정 링크를 요청하세요.</p><button class="text-button" data-action="logout">${state.demo?'둘러보기 종료':'로그아웃'}</button></article><article class="panel"><div class="panel-title"><div><h2>반복 지출 템플릿</h2><p class="muted small">자동 등록 없이, 납부액을 확인할 때마다 직접 등록해요.</p></div><button class="secondary" data-setting="template">${icon('plus',16)} 템플릿 추가</button></div><div class="templates-list">${state.data.templates.map(t=>`<div class="template-item"><span class="category-icon fixed">${icon('refresh')}</span><div><strong>${esc(t.name)}</strong><small>${esc(category(t.category_id)?.name)}</small></div><button class="text-button" data-setting="template" data-id="${t.id}">수정</button><button class="secondary" data-template="${t.id}">지출 등록</button></div>`).join('')}</div></article><article class="panel"><div class="panel-title"><div><h2>지출 분류</h2><p class="muted small">분류를 눌러 이름을 바꾸거나 세부 항목을 추가해 보세요.</p></div><button class="secondary" data-setting="category">${icon('plus',16)} 분류 추가</button></div><div class="categories-settings">${state.data.categories.map(c=>`<section><div class="category-heading"><span class="category-icon ${c.report_key}">${icon(categoryIcon(c))}</span><button class="text-button" data-setting="category" data-id="${c.id}">${esc(c.name)} <small>수정</small></button></div><div class="item-chips">${selectableItems(c.id).map(i=>`<button data-setting="item" data-id="${i.id}" data-category="${c.id}">${esc(i.name)}</button>`).join('')}<button class="add-chip" data-setting="item" data-category="${c.id}">${icon('plus',12)} 추가</button></div></section>`).join('')}</div><p class="small muted">기본 분류의 이름을 바꾸어도 기존 월별 비교 기준은 유지돼요. 새 대분류는 분류별 지출에 표시됩니다.</p></article>`;
 }
-function expenseModal(id,templateId) {
+function receiptModal(){
+  if(state.data.members.length<2)return toast('두 번째 멤버를 먼저 초대해 주세요.',true);
+  setModal(`${modalHead('RECEIPT','영수증으로 입력')}<div class="receipt-intro"><p>영수증의 날짜·상호·합계를 읽어 입력해요.<br>저장 전에 내용을 확인하고 고칠 수 있어요.</p><div class="receipt-pickers"><button type="button" class="primary" id="receipt-camera">사진 찍기</button><button type="button" class="secondary" id="receipt-gallery">사진 선택</button></div><input id="receipt-camera-file" type="file" accept="image/*" capture="environment" hidden><input id="receipt-gallery-file" type="file" accept="image/*" hidden><p class="small muted">영수증 전체가 나오게 밝은 곳에서 찍어 주세요.<br>사진은 이 기기에서만 읽고 서버에 저장하지 않아요.</p></div><div id="receipt-progress" hidden><progress max="100" value="0" aria-label="영수증 인식 진행률"></progress><p role="status" aria-live="polite"></p><button type="button" class="text-button" id="receipt-cancel">인식 취소</button></div><p id="receipt-error" class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="secondary" id="receipt-manual">직접 입력하기</button></div>`);
+  const controller=new AbortController();let closed=false,reading=false;
+  modalCleanup=()=>{closed=true;controller.abort();};
+  const camera=$('#receipt-camera-file'),gallery=$('#receipt-gallery-file');
+  $('#receipt-camera').onclick=()=>camera.click();$('#receipt-gallery').onclick=()=>gallery.click();
+  $('#receipt-manual').onclick=()=>expenseModal();$('#receipt-cancel').onclick=()=>receiptModal();
+  const read=async event=>{
+    const file=event.target.files?.[0];if(!file||reading)return;reading=true;
+    $('#receipt-error').textContent='';$('#receipt-progress').hidden=false;
+    $('#receipt-camera').disabled=true;$('#receipt-gallery').disabled=true;
+    try{
+      const {recognizeReceipt}=await import('./receipt-ocr.js');
+      const result=await recognizeReceipt(file,{signal:controller.signal,onProgress:(text,value)=>{if(closed)return;$('#receipt-progress progress').value=value;$('#receipt-progress p').textContent=text;}});
+      if(closed)return;
+      const draft=parseReceipt(result.text,today());
+      if(result.confidence<65)draft.warnings.unshift('흐리거나 작은 글자가 있어요. 원본과 날짜·금액을 꼭 비교해 주세요.');
+      draft.text=result.text;
+      draft.photo=file;
+      expenseModal(null,null,draft);
+    }catch(error){
+      if(closed||error.name==='AbortError')return;
+      $('#receipt-error').textContent=error.message||'사진을 읽지 못했어요. 다시 찍거나 직접 입력해 주세요.';
+      $('#receipt-progress').hidden=true;$('#receipt-camera').disabled=false;$('#receipt-gallery').disabled=false;
+      camera.value='';gallery.value='';reading=false;
+    }
+  };
+  camera.onchange=read;gallery.onchange=read;
+}
+function expenseModal(id,templateId,receiptDraft) {
   const d=state.data, existing=d.expenses.find(e=>e.id===id), template=d.templates.find(t=>t.id===templateId);
   const e=existing||{id:crypto.randomUUID(),spent_on:today(),amount:'',category_id:template?.category_id||d.categories.find(c=>c.report_key==='groceries')?.id||d.categories[0]?.id,item_id:template?.item_id||'',description:template?.name||'',payer:currentSlot(),share1:0,note:'',version:0,template_id:templateId||null};
   if(d.members.length<2) return toast('두 번째 멤버를 먼저 초대해 주세요.',true);
+  if(receiptDraft)Object.assign(e,{spent_on:receiptDraft.spent_on,amount:receiptDraft.amount,description:receiptDraft.description,...receiptCategory(receiptDraft,d.categories,d.items)});
   const mode=existing?'custom':'equal';
-  setModal(`${modalHead(template?'RECURRING EXPENSE':'OUR EXPENSE',existing?'지출 수정':template?`${esc(template.name)} 등록`:'새 지출 기록')}<form id="expense-form">${template?'<div class="notice">실제 납부액과 지출일을 확인해 주세요. 같은 템플릿은 한 달에 한 번만 등록할 수 있어요.</div>':''}<div class="form-grid">${field('지출일',`<input name="spent_on" type="date" value="${e.spent_on}" max="${today()}" required>`)}${field('결제한 금액',`<div class="input-suffix"><input name="amount" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="0" value="${e.amount}" required><span>원</span></div>`)}${field('분류',`<select name="category_id">${options(d.categories,e.category_id)}</select>`)}${field('세부 항목',`<select name="item_id">${options(selectableItems(e.category_id,existing?.item_id),e.item_id,'선택 안 함')}</select>`)}${field('내역',`<input name="description" value="${esc(e.description)}" placeholder="예: 주말 장보기" maxlength="120" required>`,'span-2')}${field('결제자',`<select name="payer">${options(d.members,e.payer)}</select>`,'span-2')}</div><fieldset class="split-field"><legend>어떻게 나눌까요?</legend><div class="segmented">${[['equal','반반 50:50'],['custom','직접 지정'],['payer','결제자 전액']].map(([v,label])=>`<label><input type="radio" name="mode" value="${v}" ${v===mode?'checked':''}><span>${label}</span></label>`).join('')}</div><div class="form-grid share-inputs">${field(`${esc(memberName(1))} 부담액`,`<div class="input-suffix"><input name="share1" type="number" min="0" step="1" inputmode="numeric" value="${e.share1}" required><span>원</span></div>`)}${field(`${esc(memberName(2))} 부담액`,`<div class="input-suffix"><input name="share2" type="number" min="0" step="1" inputmode="numeric" value="${existing?e.amount-e.share1:0}" required><span>원</span></div>`)}</div><p id="split-hint" class="small muted"></p></fieldset>${field('메모 <small>선택</small>',`<textarea name="note" maxlength="1000" placeholder="함께 기억할 내용을 남겨주세요">${esc(e.note)}</textarea>`)}<div class="form-error" role="alert"></div><div class="modal-footer">${existing?`<button type="button" class="text-button danger" id="delete-expense">삭제</button>`:'<button type="button" class="secondary" data-action="close">취소</button>'}<button class="primary" type="submit">${existing?'변경 저장':'지출 등록'} ${icon('check',18)}</button></div></form>`);
+  setModal(`${modalHead(template?'RECURRING EXPENSE':'OUR EXPENSE',existing?'지출 수정':template?`${esc(template.name)} 등록`:'새 지출 기록')}<form id="expense-form">${!existing&&!template&&!receiptDraft?'<div class="receipt-entry"><button type="button" class="secondary full" id="receipt-start">영수증 찍어서 자동 입력</button></div>':''}${receiptDraft?`<div class="receipt-review notice"><strong>아직 저장되지 않았어요. 읽은 내용을 확인해 주세요.</strong>${receiptDraft.warnings.map(w=>`<p>${esc(w)}</p>`).join('')}<p>분류는 추정값이에요. 실제 지출에 맞게 선택해 주세요.</p><details><summary>인식한 원문 보기</summary><pre>${esc(receiptDraft.text)}</pre></details><p id="receipt-duplicate" class="warning" hidden></p></div>`:''}${template?'<div class="notice">실제 납부액과 지출일을 확인해 주세요. 같은 템플릿은 한 달에 한 번만 등록할 수 있어요.</div>':''}<div class="form-grid">${field('지출일',`<input name="spent_on" type="date" value="${e.spent_on}" max="${today()}" required>`)}${field('결제한 금액',`<div class="input-suffix"><input name="amount" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="0" value="${e.amount}" required><span>원</span></div>`)}${field('분류',`<select name="category_id" required>${options(d.categories,e.category_id,'분류 선택')}</select>`)}${field('세부 항목',`<select name="item_id">${options(selectableItems(e.category_id,existing?.item_id),e.item_id,'선택 안 함')}</select>`)}${field('내역',`<input name="description" value="${esc(e.description)}" placeholder="예: 주말 장보기" maxlength="120" required>`,'span-2')}${field('결제자',`<select name="payer">${options(d.members,e.payer)}</select>`,'span-2')}</div><fieldset class="split-field"><legend>어떻게 나눌까요?</legend><div class="segmented">${[['equal','반반 50:50'],['custom','직접 지정'],['payer','결제자 전액']].map(([v,label])=>`<label><input type="radio" name="mode" value="${v}" ${v===mode?'checked':''}><span>${label}</span></label>`).join('')}</div><div class="form-grid share-inputs">${field(`${esc(memberName(1))} 부담액`,`<div class="input-suffix"><input name="share1" type="number" min="0" step="1" inputmode="numeric" value="${e.share1}" required><span>원</span></div>`)}${field(`${esc(memberName(2))} 부담액`,`<div class="input-suffix"><input name="share2" type="number" min="0" step="1" inputmode="numeric" value="${existing?e.amount-e.share1:0}" required><span>원</span></div>`)}</div><p id="split-hint" class="small muted"></p></fieldset>${field('메모 <small>선택</small>',`<textarea name="note" maxlength="1000" placeholder="함께 기억할 내용을 남겨주세요">${esc(e.note)}</textarea>`)}${receiptDraft?'<label class="receipt-confirm"><input type="checkbox" name="receipt_checked" required><span>날짜·금액·내역과 분류를 확인했어요.</span></label>':''}<div class="form-error" role="alert"></div><div class="modal-footer">${existing?`<button type="button" class="text-button danger" id="delete-expense">삭제</button>`:'<button type="button" class="secondary" data-action="close">취소</button>'}<button class="primary" type="submit">${existing?'변경 저장':'지출 등록'} ${icon('check',18)}</button></div></form>`);
   const form=$('#expense-form');
+  if($('#receipt-start'))$('#receipt-start').onclick=receiptModal;
+  if(receiptDraft?.photo){
+    const photoUrl=URL.createObjectURL(receiptDraft.photo);
+    const detail=document.createElement('details');detail.className='receipt-photo';
+    const summary=document.createElement('summary');summary.textContent='영수증 사진 보기';
+    const img=document.createElement('img');img.alt='선택한 영수증 원본';img.src=photoUrl;
+    detail.append(summary,img);form.querySelector('.receipt-review').append(detail);
+    modalCleanup=()=>URL.revokeObjectURL(photoUrl);
+  }
   const update=()=>{
     const mode=form.elements.mode.value,amount=Number(form.elements.amount.value),payer=Number(form.elements.payer.value);
+    if(receiptDraft){const warning=$('#receipt-duplicate');warning.hidden=!similarReceipt(state.data.expenses,{spent_on:form.elements.spent_on.value,amount,description:form.elements.description.value});warning.textContent='같은 날짜·금액·상호의 지출이 있어요. 중복 영수증인지 확인해 주세요.';}
     if(mode!=='custom') {const first=mode==='equal'?Math.ceil(amount/2):payer===1?amount:0;form.elements.share1.value=first;form.elements.share2.value=amount-first;}
     form.elements.share1.readOnly=mode!=='custom'; form.elements.share2.readOnly=mode!=='custom';
     const total=Number(form.elements.share1.value)+Number(form.elements.share2.value);
@@ -72,6 +116,8 @@ function expenseModal(id,templateId) {
   }); update();
   form.onsubmit=event=>{event.preventDefault(); runForm(form,async()=>{
     const f=Object.fromEntries(new FormData(form)); const amount=Number(f.amount);
+    if(receiptDraft&&!form.elements.receipt_checked.checked)throw new Error('인식한 내용을 확인한 뒤 체크해 주세요.');
+    delete f.receipt_checked;
     const [share1,share2]=split(amount,f.mode,Number(f.payer),f.share1);
     if(Number(f.share2)!==share2) throw new Error('두 사람의 부담액 합계를 결제액에 맞춰 주세요.');
     if(!f.description.trim()) throw new Error('내역을 입력해 주세요.');
@@ -130,7 +176,8 @@ document.addEventListener('click',async event=>{
 });
 document.addEventListener('change',e=>{if(e.target.id==='month'&&/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;render();}if(e.target.id==='filter-category'){state.filterCategory=e.target.value;render();}if(e.target.id==='filter-payer'){state.filterPayer=e.target.value;render();}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login-form')return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const f=Object.fromEntries(new FormData(e.target));const{error}=await client.auth.signInWithPassword({email:loginEmail(f.username),password:f.password});if(error)throw new Error('아이디 또는 비밀번호를 확인해 주세요.');await refresh();}catch(error){showError(error);}finally{button.disabled=false;}});
-$('#modal').addEventListener('cancel',e=>{if(state.busy)e.preventDefault();});
+$('#modal').addEventListener('cancel',e=>{if(state.busy)e.preventDefault();else cleanModal();});
+$('#modal').addEventListener('close',cleanModal);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.data&&!state.demo&&!$('#modal').open)refresh().catch(showError);});
 setInterval(()=>{if(state.data&&!state.demo&&!state.busy&&!$('#modal').open&&document.visibilityState==='visible')refresh().catch(()=>{});},30000);
 async function boot(){
