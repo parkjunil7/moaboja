@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+/supabase/functions/member-login/.env.accounts.json
 .env.*
 !.env.example
 *.log

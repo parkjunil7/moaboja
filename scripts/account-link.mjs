@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { accounts } from '../src/accounts.js';
+import { readAccounts } from './private-accounts.mjs';
 import './check-config.mjs';
 
-const account = accounts.find(a => a.username === process.argv[2]);
-if (!account) throw new Error('사용법: npm run account-link -- member-1 또는 member-2');
+const account = readAccounts().find(a => a.username === process.argv[2]);
+if (!account) throw new Error('사용법: npm run account-link -- <로그인 아이디>');
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.APP_URL) throw new Error('.env 관리자 키와 APP_URL이 필요합니다.');
 const admin = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const check = result => { if (result.error) throw new Error(result.error.message); return result.data; };

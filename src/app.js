@@ -1,6 +1,6 @@
 import './travel-expenses.js';
 import './style.css';
-import { loginEmail } from './accounts.js';
+import { signInMember } from './member-login.js';
 import { recoveryEntry, verifyRecovery, recoveryError } from './recovery.js';
 import { reviewReceipt, receiptCategory, similarReceipt } from './receipt.js';
 import { won,today,previousMonth,split,summarize } from './domain.js';
@@ -266,7 +266,7 @@ document.addEventListener('click',async event=>{
   }catch(e){button.disabled=false;showError(e);}
 });
 document.addEventListener('change',e=>{if(e.target.id==='month'&&/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;render();}if(e.target.id==='filter-category'){state.filterCategory=e.target.value;render();}if(e.target.id==='filter-payer'){state.filterPayer=e.target.value;render();}});
-document.addEventListener('submit',async e=>{if(e.target.id!=='login-form')return;e.preventDefault();const button=e.target.querySelector('button[type="submit"]');button.disabled=true;try{const f=Object.fromEntries(new FormData(e.target));const{error}=await client.auth.signInWithPassword({email:loginEmail(f.username),password:f.password});if(error)throw new Error('아이디 또는 비밀번호를 확인해 주세요.');await refresh();}catch(error){showError(error);}finally{button.disabled=false;}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login-form')return;e.preventDefault();const button=e.target.querySelector('button[type="submit"]');button.disabled=true;try{const f=Object.fromEntries(new FormData(e.target));await signInMember(client,f.username,f.password);await refresh();}catch(error){showError(error);}finally{button.disabled=false;}});
 $('#modal').addEventListener('cancel',e=>{if(state.busy)e.preventDefault();else cleanModal();});
 $('#modal').addEventListener('close',cleanModal);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.data&&!state.demo&&!state.busy&&!$('#modal').open)refresh().catch(showError);});

@@ -2,11 +2,12 @@
 // 2000년 1월에 테스트 내역을 만들고 finally에서 본 테스트의 UUID만 삭제합니다.
 import assert from 'node:assert/strict';
 import { createClient } from '@supabase/supabase-js';
-import { accounts } from '../src/accounts.js';
+import { readAccounts } from '../scripts/private-accounts.mjs';
 import '../scripts/check-config.mjs';
 const env=process.env;
 const adminLink = process.argv.includes('--admin-link');
 for(const name of adminLink ? ['SUPABASE_SERVICE_ROLE_KEY'] : ['TEST_USER_A_EMAIL','TEST_USER_A_PASSWORD','TEST_USER_B_EMAIL','TEST_USER_B_PASSWORD']) if(!env[name])throw new Error(`${name} 환경 변수가 필요합니다.`);
+const accounts = adminLink ? readAccounts() : [];
 const options={auth:{persistSession:false,autoRefreshToken:false}};
 const a=createClient(env.VITE_SUPABASE_URL,env.VITE_SUPABASE_PUBLISHABLE_KEY,options),b=createClient(env.VITE_SUPABASE_URL,env.VITE_SUPABASE_PUBLISHABLE_KEY,options);
 async function call(client,name,args){const{data,error}=await client.rpc(name,args);if(error)throw new Error(error.message);return data;}

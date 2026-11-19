@@ -63,7 +63,7 @@
 - 기존 지출 RPC의 SECURITY DEFINER 경고는 이전 검증과 동일합니다. 기존 Auth의 유출 비밀번호 보호 비활성 경고도 확인했으며 이번 영수증 변경에서 로그인 정책을 변경하지 않았습니다. [비밀번호 보호 설명](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
 - 설정 링크 수정: 토큰을 앱에서 직접 검증하고 대상 user ID와 실제 세션을 대조. 만료/재사용 오류를 기존 로그인으로 대체하지 않음. 비밀번호 창에 계정 표시 및 저장 직전 사용자 재확인.
-- `scripts/check-recovery.mjs` 실서비스 검증 통과: 멤버1의 인증 세션에서 멤버2의 복구 토큰 인증 → 멤버2 멤버 확인 → 같은 토큰 재사용 거부. 비밀번호 및 지출 변경 없음.
+- `scripts/check-recovery.mjs` 실서비스 검증 통과: 첫 번째 계정의 세션에서 두 번째 계정의 복구 토큰 인증 → 두 번째 멤버 확인 → 같은 토큰 재사용 거부. 비밀번호 및 지출 변경 없음.
 - GitHub Pages 배포 성공: 운영 사이트 확인 완료.
 - https://parkjunil7.github.io/moaboja/ 에서 아이디 로그인 화면 확인, 브라우저 error/warn 로그 없음.
 - 배포 캡처는 로컬 `artifacts/moaboja-live.jpg`.
