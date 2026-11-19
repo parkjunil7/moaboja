@@ -16,7 +16,7 @@ function appHarness() {
   let read=async()=>ledger();
   const node={open:false,addEventListener(){}};
   const context=vm.createContext({
-    effects,configured:false,today:()=> '2026-11-19',
+    effects,configured:false,today:()=> '2026-11-19',resetChat(){},
     snapshot:()=>read(),
     document:{querySelector:selector=>selector==='travel-expenses'?{load:async()=>{effects.travelLoads++;}}:node,addEventListener:(name,fn)=>listeners.set(name,fn)},
     setInterval(){},

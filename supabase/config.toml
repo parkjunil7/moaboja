@@ -9,3 +9,7 @@ entrypoint = "./functions/receipt-ai/index.ts"
 # Supabase Auth verifies the password before this function returns a session.
 verify_jwt = false
 entrypoint = "./functions/member-login/index.ts"
+
+[functions.ledger-chat]
+verify_jwt = false
+entrypoint = "./functions/ledger-chat/index.ts"
