@@ -11,7 +11,7 @@ export function mountChat(root,ledger,demo) {
   const chat=conversation;
   function paint() {
     if(!root.isConnected || chat!==conversation) return;
-    root.innerHTML=`<section class="panel cat-chat"><header><img src="./icons/moaboja-cat-v1-180.png" width="58" height="58" alt=""><h1>고양이에게 물어보기</h1></header><p class="chat-intro">궁금한 달의 지출이나 정산액을 물어봐요.</p><div class="chat-log" role="log" aria-label="고양이와 대화"></div><div class="chat-examples"></div><form class="chat-form"><label for="cat-question">질문</label><div><input id="cat-question" maxlength="300" autocomplete="off" placeholder="그럼 다음 달 이자는?" required><button class="primary" type="submit">보내기</button></div></form><small class="chat-note"></small></section>`;
+    root.innerHTML=`<section class="panel cat-chat"><header><img src="./icons/moaboja-cat-v1-180.png" width="58" height="58" alt=""><h1>냥비서에게 물어봐</h1></header><p class="chat-intro">궁금한 달의 지출이나 정산액을 물어봐요.</p><div class="chat-log" role="log" aria-label="고양이와 대화"></div><div class="chat-examples"></div><form class="chat-form"><label for="cat-question">질문</label><div><input id="cat-question" maxlength="300" autocomplete="off" placeholder="그럼 다음 달 이자는?" required><button class="primary" type="submit">보내기</button></div></form><small class="chat-note"></small></section>`;
     const log=root.querySelector('.chat-log');
     for(const turn of chat.turns) {
       for(const [speaker,text] of [['나',turn.question],['고양이',turn.answer||'계산하고 있어요…']]) {
