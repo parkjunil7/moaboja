@@ -1,3 +1,4 @@
+import './travel-expenses.js';
 import './style.css';
 import { loginEmail } from './accounts.js';
 import { recoveryEntry, verifyRecovery, recoveryError } from './recovery.js';
@@ -65,7 +66,7 @@ function empty(title,description) { return `<div class="empty">${icon('leaf',28)
 function expenseList(rows) { return rows.length?`<div class="expense-table"><div class="table-head"><span>지출 내역</span><span>결제자</span><span>부담 방식</span><span>금액</span></div>${rows.map(e=>{const c=category(e.category_id),item=state.data.items.find(i=>i.id===e.item_id);return `<button class="expense-row" data-expense="${esc(e.id)}"><div class="expense-main"><span class="category-icon ${c?.report_key}">${icon(categoryIcon(c))}</span><span><strong>${esc(e.description)}</strong><small>${e.spent_on.slice(5).replace('-','.')} <b>·</b> ${esc(c?.name)}${item?' / '+esc(item.name):''}</small></span></div><span class="payer-name">${esc(memberName(e.payer))}</span><span class="split-label">${e.share1===0||e.share1===e.amount?'한 사람 부담':e.share1===Math.ceil(e.amount/2)?'반반 부담':'직접 지정'}</span><strong class="expense-amount">${won(e.amount)} ${icon('chevron',14)}</strong></button>`;}).join('')}</div>`:empty('등록된 지출이 없어요','지출 추가 버튼으로 첫 기록을 남겨 보세요.'); }
 function expensePage() {
   const rows=state.data.expenses.filter(e=>e.spent_on.startsWith(state.month)&&(!state.filterCategory||e.category_id===state.filterCategory)&&(!state.filterPayer||e.payer===Number(state.filterPayer))).sort((a,b)=>b.spent_on.localeCompare(a.spent_on));
-  return `<article class="panel"><div class="filter-row"><div>${field('분류',`<select id="filter-category">${options(state.data.categories,state.filterCategory,'전체 분류')}</select>`)}${field('결제자',`<select id="filter-payer">${options(state.data.members,state.filterPayer,'두 사람 모두')}</select>`)}</div><p>${rows.length}건 <strong>${won(rows.reduce((n,e)=>n+e.amount,0))}</strong></p></div>${expenseList(rows)}</article>`;
+  return `<article class="panel"><div class="filter-row"><div>${field('분류',`<select id="filter-category">${options(state.data.categories,state.filterCategory,'전체 분류')}</select>`)}${field('결제자',`<select id="filter-payer">${options(state.data.members,state.filterPayer,'두 사람 모두')}</select>`)}</div><p>${rows.length}건 <strong>${won(rows.reduce((n,e)=>n+e.amount,0))}</strong></p></div>${expenseList(rows)}</article>${state.demo ? '' : '<travel-expenses></travel-expenses>'}`;
 }
 function settlementPage() {
   const s=summarize(state.data.expenses,state.data.transfers,state.month), transfers=state.data.transfers.filter(t=>t.month===state.month+'-01');

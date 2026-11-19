@@ -43,3 +43,11 @@
 .auth-preview .secondary{min-height:46px;font-size:13px;font-weight:500}
 @media(max-width:680px){.auth-screen{padding:28px 24px}.auth-mascot{width:120px;height:120px;border-radius:28px;margin-bottom:16px}.auth-heading{margin-bottom:24px}.auth-heading h1{font-size:34px}}
 @media(max-height:700px){.auth-screen{padding-top:24px;padding-bottom:24px}.auth-mascot{width:96px;height:96px;border-radius:24px;margin-bottom:12px}.auth-heading{margin-bottom:20px}}
+
+.travel-expenses { display:block; margin-top:1rem; }
+.travel-expenses > p { color:var(--muted); font-size:.875rem; }
+.travel-expenses details { padding:.8rem 0; border-top:1px solid #dededa; }
+.travel-expenses summary { cursor:pointer; font-weight:600; }
+.travel-expenses ul { list-style:none; margin:.5rem 0 0; padding:0; }
+.travel-expenses li { display:flex; justify-content:space-between; gap:1rem; padding:.4rem 0; overflow-wrap:anywhere; }
+.travel-expenses li strong { white-space:nowrap; }
