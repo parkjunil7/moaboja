@@ -1,5 +1,6 @@
 import './style.css';
 import { loginEmail } from './accounts.js';
+import { recoveryEntry, verifyRecovery, recoveryError } from './recovery.js';
 import { won,today,previousMonth,split,summarize } from './domain.js';
 import { client,configured,snapshot,rpc,createDemo,demoMutation } from './data.js';
 
@@ -100,9 +101,12 @@ async function runForm(form,fn,message) {
   form.querySelector('.form-error').textContent='';
   try {await fn();closeModal();toast(message);try{await refresh();}catch(e){render();toast('저장은 완료됐지만 새 내역을 불러오지 못했어요. 새로고침해 주세요.',true);}}catch(e){form.querySelector('.form-error').textContent=e.message;}finally{state.busy=false;if(button)button.disabled=false;}
 }
-function passwordModal() {
-  setModal(`${modalHead('WELCOME','비밀번호 설정')}<form id="password-form">${field('새 비밀번호 (6자 이상)','<input name="password" type="password" minlength="6" autocomplete="new-password" required>')}${field('새 비밀번호 확인','<input name="confirm" type="password" minlength="6" autocomplete="new-password" required>')}<div class="form-error" role="alert"></div><div class="modal-footer"><button class="primary">비밀번호 저장</button></div></form>`);
-  const form=$('#password-form');form.onsubmit=e=>{e.preventDefault();runForm(form,async()=>{if(form.elements.password.value!==form.elements.confirm.value)throw new Error('비밀번호가 일치하지 않습니다.');const{error}=await client.auth.updateUser({password:form.elements.password.value});if(error)throw new Error(error.message);history.replaceState(null,'',location.pathname);},'비밀번호를 저장했어요.');};
+function passwordModal(expectedUserId) {
+  const member=state.data?.members.find(m=>m.user_id===expectedUserId);
+  if(!member || state.data.user.id!==expectedUserId) throw new Error('설정할 계정이 일치하지 않아요. 새 설정 링크를 열어 주세요.');
+  sessionStorage.setItem('moaboja-recovery-user',expectedUserId);
+  setModal(`${modalHead('WELCOME',`${esc(member.name)}님 비밀번호 설정`)}<form id="password-form">${field('새 비밀번호 (6자 이상)','<input name="password" type="password" minlength="6" autocomplete="new-password" required>')}${field('새 비밀번호 확인','<input name="confirm" type="password" minlength="6" autocomplete="new-password" required>')}<div class="form-error" role="alert"></div><div class="modal-footer"><button class="primary">비밀번호 저장</button></div></form>`);
+  const form=$('#password-form');form.onsubmit=e=>{e.preventDefault();runForm(form,async()=>{if(form.elements.password.value!==form.elements.confirm.value)throw new Error('비밀번호가 일치하지 않습니다.');const{data:{user},error:identityError}=await client.auth.getUser();if(identityError||user?.id!==expectedUserId)throw new Error('다른 계정으로 로그인 상태가 바뀌었어요. 이 계정의 설정 링크를 다시 열어 주세요.');const{error}=await client.auth.updateUser({password:form.elements.password.value});if(error)throw new Error(error.message);sessionStorage.removeItem('moaboja-recovery-user');history.replaceState(null,'',location.pathname);},'비밀번호를 저장했어요.');};
 }
 document.addEventListener('click',async event=>{
   const button=event.target.closest('button,a');if(!button)return;
@@ -131,8 +135,28 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 setInterval(()=>{if(state.data&&!state.demo&&!state.busy&&!$('#modal').open&&document.visibilityState==='visible')refresh().catch(()=>{});},30000);
 async function boot(){
   login(); if(!configured)return;
-  client.auth.onAuthStateChange(event=>{if(event==='PASSWORD_RECOVERY')setTimeout(passwordModal,0);if(event==='SIGNED_OUT'&&!state.demo){state.data=null;closeModal();login();}});
-  const{data:{session}}=await client.auth.getSession();
-  if(session){try{await refresh();if(new URLSearchParams(location.search).has('welcome'))passwordModal();}catch(e){login(e.message);}}
+  const entry=recoveryEntry(location.href);
+  if(entry.kind==='error'){
+    history.replaceState(null,'',location.pathname);
+    sessionStorage.removeItem('moaboja-recovery-user');
+    login(recoveryError);return;
+  }
+  if(entry.kind==='setup'){
+    history.replaceState(null,'',location.pathname+'?welcome=1');
+    sessionStorage.removeItem('moaboja-recovery-user');
+    try{
+      await client.auth.getSession();
+      const user=await verifyRecovery(client,entry);
+      await refresh();passwordModal(user.id);
+    }catch(e){state.data=null;login(e.message);return;}
+  }else{
+    const{data:{session},error}=await client.auth.getSession();
+    if(error){login(recoveryError);return;}
+    if(entry.kind==='resume' && (!session || sessionStorage.getItem('moaboja-recovery-user')!==session.user.id)){
+      login(recoveryError);return;
+    }
+    if(session){try{await refresh();if(entry.kind==='legacy'||entry.kind==='resume')passwordModal(session.user.id);}catch(e){login(e.message);}}
+  }
+  client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'&&!state.demo){state.data=null;sessionStorage.removeItem('moaboja-recovery-user');closeModal();login();}});
 }
 boot().catch(showError);
