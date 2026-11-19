@@ -49,7 +49,40 @@ async function nextLoginCat(button) {
 }
 function login(message='') {
   lastSnapshot='';refreshRequest++;
-  $('#app').innerHTML=`<main class="auth-screen"><section class="auth-card" aria-labelledby="login-title"><header class="auth-heading"><button class="auth-mascot" type="button" data-action="next-cat" data-cat-index="0" aria-label="다음 고양이 보기 · 하트 동전을 안고 있는 고양이 (1/4)" title="눌러서 다음 고양이 보기"><img src="./icons/moaboja-cat-v1-512.png" width="144" height="144" alt="하트 동전을 안고 있는 고양이" fetchpriority="high"></button><h1 id="login-title">모아보자!</h1><p>화이팅!</p></header>${message?`<p class="notice warning" role="alert">${esc(message)}</p>`:''}<form id="login-form">${field('아이디','<input name="username" type="text" autocomplete="username" placeholder="아이디" required>')}${field('비밀번호','<input name="password" type="password" autocomplete="current-password" placeholder="비밀번호" required minlength="6">')}<button class="primary full" ${!configured?'disabled':''}>로그인</button></form><button class="text-button full" data-action="forgot" ${!configured?'disabled':''}>비밀번호 재설정</button><div class="auth-preview">${!configured?'<p>로그인 준비 중이에요. 먼저 둘러보세요.</p>':''}<button class="secondary full" data-action="demo">예시 데이터로 둘러보기</button></div></section></main>`;
+  $('#app').innerHTML=`<main class="auth-screen">
+    <section class="auth-card" aria-labelledby="login-title">
+      <header class="auth-heading">
+        <button class="auth-mascot" type="button" data-action="next-cat" data-cat-index="0"
+          aria-label="다음 고양이 보기 · ${loginCats[0].alt} (1/4)" title="눌러서 다음 고양이 보기">
+          <img src="${loginCats[0].src}" width="512" height="512" alt="${loginCats[0].alt}" fetchpriority="high">
+        </button>
+        <h1 id="login-title">모아보자!</h1>
+        <p>우리 둘이 쓴 돈, 한곳에 모아보자.</p>
+      </header>
+      <div class="auth-panel">
+        <h2 id="auth-form-title">로그인</h2>
+        ${message?`<p class="notice warning" role="alert">${esc(message)}</p>`:''}
+        <form id="login-form" aria-label="로그인">
+          ${field('아이디','<input name="username" type="text" autocomplete="username" required>')}
+          <div class="field">
+            <label for="login-password">비밀번호</label>
+            <div class="auth-password">
+              <input id="login-password" name="password" type="password" autocomplete="current-password" required minlength="6">
+              <button type="button" data-action="show-password" aria-label="비밀번호 표시" aria-pressed="false">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="submit" class="primary full" ${!configured?'disabled':''}>로그인</button>
+        </form>
+        <button class="text-button full" data-action="forgot" ${!configured?'disabled':''}>비밀번호 재설정</button>
+        <div class="auth-preview">
+          ${!configured?'<p>로그인 준비 중이에요. 먼저 둘러보세요.</p>':''}
+          <button class="secondary full" data-action="demo">가계부 미리 보기</button>
+        </div>
+      </div>
+    </section>
+  </main>`;
 }
 function render() {
   if(!state.data) return login();
@@ -214,6 +247,13 @@ document.addEventListener('click',async event=>{
     if(button.dataset.deleteTransfer)return confirmAction('송금 기록을 삭제할까요?','실제 계좌 송금은 취소되지 않습니다. 남은 정산액은 다시 계산됩니다.',()=>mutate('delete_transfer',{p_id:button.dataset.deleteTransfer}),'송금 기록을 삭제했어요.');
     switch(button.dataset.action){
       case 'next-cat':await nextLoginCat(button);break;
+      case 'show-password': {
+        const password=$('#login-password');
+        const show=password.type==='password';
+        password.type=show?'text':'password';
+        button.setAttribute('aria-pressed',String(show));
+        break;
+      }
       case 'close':if(!state.busy)closeModal();break;
       case 'demo':state.demo=true;state.data=createDemo();state.page='dashboard';render();break;
       case 'switch-demo':state.data.user.id=currentSlot()===1?'demo2':'demo1';render();break;
@@ -226,7 +266,7 @@ document.addEventListener('click',async event=>{
   }catch(e){button.disabled=false;showError(e);}
 });
 document.addEventListener('change',e=>{if(e.target.id==='month'&&/^\d{4}-\d{2}$/.test(e.target.value)){state.month=e.target.value;render();}if(e.target.id==='filter-category'){state.filterCategory=e.target.value;render();}if(e.target.id==='filter-payer'){state.filterPayer=e.target.value;render();}});
-document.addEventListener('submit',async e=>{if(e.target.id!=='login-form')return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const f=Object.fromEntries(new FormData(e.target));const{error}=await client.auth.signInWithPassword({email:loginEmail(f.username),password:f.password});if(error)throw new Error('아이디 또는 비밀번호를 확인해 주세요.');await refresh();}catch(error){showError(error);}finally{button.disabled=false;}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login-form')return;e.preventDefault();const button=e.target.querySelector('button[type="submit"]');button.disabled=true;try{const f=Object.fromEntries(new FormData(e.target));const{error}=await client.auth.signInWithPassword({email:loginEmail(f.username),password:f.password});if(error)throw new Error('아이디 또는 비밀번호를 확인해 주세요.');await refresh();}catch(error){showError(error);}finally{button.disabled=false;}});
 $('#modal').addEventListener('cancel',e=>{if(state.busy)e.preventDefault();else cleanModal();});
 $('#modal').addEventListener('close',cleanModal);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.data&&!state.demo&&!state.busy&&!$('#modal').open)refresh().catch(showError);});
