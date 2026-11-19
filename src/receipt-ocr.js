@@ -1,3 +1,5 @@
+import {enhanceReceipt} from './receipt-image.js';
+import {receiptScore,reviewReceipt} from './receipt.js';
 const abortError=()=>new DOMException('인식을 취소했어요.','AbortError');
 export async function recognizeReceipt(file,{signal,onProgress=()=>{}}={}){
   if(!file||!file.size)throw new Error('사진을 선택해 주세요.');
@@ -34,7 +36,15 @@ export async function recognizeReceipt(file,{signal,onProgress=()=>{}}={}){
     starting.then(w=>{if(stopped)void w.terminate();},()=>{});
     worker=await starting;if(stopped)throw abortError();
     await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1',user_defined_dpi:'300'});
-    const {data}=await worker.recognize(canvas,{rotateAuto:true});
+    let {data}=await worker.recognize(canvas,{rotateAuto:true});
+    const first=reviewReceipt(data);
+    if(!stopped&&(!first.spent_on||!first.amount||data.confidence<65)){
+      onProgress('글자 대비와 배치를 바꿔 한 번 더 읽고 있어요.',60);
+      enhanceReceipt(canvas);
+      await worker.setParameters({tessedit_pageseg_mode:'3'});
+      const retry=await worker.recognize(canvas,{rotateAuto:true});
+      if(receiptScore(retry.data)>receiptScore(data))data=retry.data;
+    }
     if(stopped)throw abortError();
     onProgress('읽은 내용을 정리하고 있어요.',100);
     return {text:data.text,confidence:data.confidence};

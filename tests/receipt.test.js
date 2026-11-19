@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseReceipt,receiptCategory,similarReceipt} from '../src/receipt.js';
+import {parseReceipt,receiptCategory,similarReceipt,reviewReceipt,receiptScore} from '../src/receipt.js';
+import {receiptProjection} from '../src/receipt-image.js';
 const today='2026-11-19';
 test('영수증의 실제 결제액을 세금·할인·받은 돈보다 우선한다',()=>{
   const r=parseReceipt('모아 식당\n2026-11-18 12:34\n공급가액 54,545\n부가세 5,455\n합 계 65,000\n할인금액 5,000\n결제금액 60,000\n받은돈 100,000\n거스름돈 40,000',today);
@@ -38,4 +39,33 @@ test('같은 날짜/금액/상호는 중복 후보, 다른 금액·날짜는 별
 test('취소 전표와 음수는 양수 지출로 자동 변환하지 않음',()=>{
   assert.equal(parseReceipt('모아 식당\n결제금액 -60,000',today).amount,'');
   assert.equal(parseReceipt('모아 식당\n승인 취소\n결제금액 60,000',today).amount,'');
+});
+
+test('깨진 OCR 문자열은 상호로 자동 입력하지 않음',()=>{
+  const r=parseReceipt('| III / | nl Ab | i / ||\n| ihe | Hall it! | |\nly 11000',today);
+  assert.equal(r.description,'');assert.equal(r.amount,'');assert.equal(r.spent_on,'');
+});
+
+test('낮은 신뢰도 결과는 날짜·금액도 비워서 확인 화면 진입을 차단할 수 있음',()=>{
+  const text='모아 식당\n2026-11-18\n결제금액 60,000';
+  const bad=reviewReceipt({text,confidence:20},today);
+  assert.equal(bad.amount,'');assert.equal(bad.spent_on,'');assert.equal(bad.description,'');
+  const poor=reviewReceipt({text:'트24 (편의점)\n2004-06-20 17:34\n총: Nx) LHS LL',confidence:55},today);
+  assert.equal(poor.spent_on,'');assert.equal(poor.amount,'');assert.equal(poor.description,'');
+  const partial=reviewReceipt({text,confidence:70},today);
+  assert.equal(partial.amount,60000);assert.equal(partial.description,'');assert.equal(partial.categoryHint,null);
+  assert.ok(receiptScore({text,confidence:90})>receiptScore({text,confidence:20}));
+});
+
+test('원근 보정은 사다리꼴 네 모서리와 직사각형 중앙을 정확히 대응',()=>{
+  const points=[{x:150,y:100},{x:450,y:130},{x:500,y:700},{x:80,y:650}];
+  const project=receiptProjection(points);
+  [[0,0],[1,0],[1,1],[0,1]].forEach(([u,v],i)=>{const p=project(u,v);assert.ok(Math.abs(p.x-points[i].x)<1e-8);assert.ok(Math.abs(p.y-points[i].y)<1e-8);});
+  assert.deepEqual(receiptProjection([{x:0,y:0},{x:200,y:0},{x:200,y:400},{x:0,y:400}])(.5,.5),{x:100,y:200});
+});
+
+test('모서리 교차·중첩·잘못된 좌표는 원근 보정 전에 거부',()=>{
+  assert.throws(()=>receiptProjection([{x:0,y:0},{x:200,y:400},{x:200,y:0},{x:0,y:400}]));
+  assert.throws(()=>receiptProjection([{x:0,y:0},{x:0,y:0},{x:200,y:400},{x:0,y:400}]));
+  assert.throws(()=>receiptProjection([{x:NaN,y:0}]));
 });

@@ -36,7 +36,8 @@ export function parseReceipt(text, today) {
   if(!amount)warnings.push(amounts.length>1?'결제금액 후보가 여러 개예요. 최종 금액을 확인해 주세요.':'합계 금액을 읽지 못했어요. 결제금액을 직접 입력해 주세요.');
   const explicit=lines.map(l=>l.match(/(?:상호명?|매장명|가맹점명)\s*[:：]?\s+(.+)/)?.[1]).find(Boolean);
   const excluded=/영수증|고객용|매출전표|신용카드|체크카드|현금영수증|사업자|대표|주소|전화|TEL|승인|거래|일시|일자|금액|합계|공급가|부가세|할인|감사합니다|RECEIPT|CUSTOMER|상품명|수량|단가/i;
-  const merchant=(explicit||lines.slice(0,8).find(l=>/[가-힣a-zA-Z]/.test(l)&&!excluded.test(l)&&!/\d{3}[- ]\d{2,4}[- ]\d{4}|20\d{2}[-./]|\d{1,3},\d{3}/.test(l)&&l.length>=2&&l.length<=60)||'').replace(/^[\s*\[\]-]+|[\s*\[\]-]+$/g,'').slice(0,120);
+  const plausible=l=>/[가-힣]{2}|[a-zA-Z]{3}/.test(l)&&!/[|¦\/\\]{2}|[|¦].*[|¦]/.test(l)&&(l.match(/[가-힣a-zA-Z0-9]/g)||[]).length/Math.max(1,l.replace(/\s/g,'').length)>.65;
+  const merchant=(explicit&&plausible(explicit)?explicit:lines.slice(0,8).find(l=>plausible(l)&&!excluded.test(l)&&!/\d{3}[- ]\d{2,4}[- ]\d{4}|20\d{2}[-./]|\d{1,3},\d{3}/.test(l)&&l.length>=2&&l.length<=60)||'').replace(/^[\s*\[\]-]+|[\s*\[\]-]+$/g,'').slice(0,120);
   if(!merchant)warnings.push('상호명을 읽지 못했어요. 내역을 입력해 주세요.');
   const searchable=(merchant+' '+lines.join(' ')).replace(/\s/g,'');
   let categoryHint=null,itemHint=null;
@@ -47,6 +48,21 @@ export function parseReceipt(text, today) {
   else if(/마트|슈퍼|이마트|홈플러스|식재료|생필품|편의점/.test(searchable)){categoryHint='groceries';}
   else if(/주차장|주차료|주차요금/.test(searchable)){categoryHint='교통비';itemHint='외부 주차료';}
   return {spent_on,amount,description:merchant,categoryHint,itemHint,warnings};
+}
+
+// 낮은 OCR 신뢰도에서는 그럴듯한 문자열도 자동 입력하지 않습니다.
+export function reviewReceipt(result,today){
+  const draft=parseReceipt(result.text,today);
+  if(!Number.isFinite(result.confidence)||result.confidence<65){
+    draft.spent_on='';draft.amount='';draft.description='';draft.categoryHint=null;draft.itemHint=null;
+    draft.warnings=['글자를 정확히 읽지 못했어요. 영수증 영역을 다시 맞추거나 직접 입력해 주세요.'];
+  }else if(result.confidence<75){draft.description='';draft.categoryHint=null;draft.itemHint=null;draft.warnings.unshift('일부 글자가 불명확해요. 원본과 날짜·금액을 비교하고 내역·분류를 직접 확인해 주세요.');}
+  return draft;
+}
+
+export function receiptScore(result){
+  const d=reviewReceipt(result);
+  return (d.spent_on?25:0)+(d.amount?30:0)+(d.description?10:0)+Math.max(0,Number(result.confidence)||0)/5;
 }
 
 export function receiptCategory(draft,categories,items){

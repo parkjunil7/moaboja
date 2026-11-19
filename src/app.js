@@ -1,7 +1,7 @@
 import './style.css';
 import { loginEmail } from './accounts.js';
 import { recoveryEntry, verifyRecovery, recoveryError } from './recovery.js';
-import { parseReceipt, receiptCategory, similarReceipt } from './receipt.js';
+import { reviewReceipt, receiptCategory, similarReceipt } from './receipt.js';
 import { won,today,previousMonth,split,summarize } from './domain.js';
 import { client,configured,snapshot,rpc,createDemo,demoMutation } from './data.js';
 
@@ -63,21 +63,30 @@ function receiptModal(){
   $('#receipt-camera').onclick=()=>camera.click();$('#receipt-gallery').onclick=()=>gallery.click();
   $('#receipt-manual').onclick=()=>expenseModal();$('#receipt-cancel').onclick=()=>receiptModal();
   const read=async event=>{
-    const file=event.target.files?.[0];if(!file||reading)return;reading=true;
-    $('#receipt-error').textContent='';$('#receipt-progress').hidden=false;
+    let file=event.target.files?.[0];if(!file||reading)return;reading=true;
+    $('#receipt-error').textContent='';
     $('#receipt-camera').disabled=true;$('#receipt-gallery').disabled=true;
     try{
+      const {prepareReceipt}=await import('./receipt-editor.js');
+      if(closed)return;
+      $('#modal .receipt-intro').hidden=true;
+      const editor=document.createElement('div');editor.className='receipt-editor';$('#receipt-progress').before(editor);
+      file=await prepareReceipt(file,editor,{signal:controller.signal});
+      editor.remove();if(closed)return;
+      $('#receipt-progress').hidden=false;
       const {recognizeReceipt}=await import('./receipt-ocr.js');
       const result=await recognizeReceipt(file,{signal:controller.signal,onProgress:(text,value)=>{if(closed)return;$('#receipt-progress progress').value=value;$('#receipt-progress p').textContent=text;}});
       if(closed)return;
-      const draft=parseReceipt(result.text,today());
-      if(result.confidence<65)draft.warnings.unshift('흐리거나 작은 글자가 있어요. 원본과 날짜·금액을 꼭 비교해 주세요.');
+      const draft=reviewReceipt(result,today());
+      if(!draft.spent_on&&!draft.amount)throw new Error('날짜와 합계를 정확히 읽지 못했어요. 영수증만 크게 나오도록 다시 찍거나 원본 사진을 선택해 주세요. 직접 입력도 가능해요.');
       draft.text=result.text;
       draft.photo=file;
       expenseModal(null,null,draft);
     }catch(error){
       if(closed||error.name==='AbortError')return;
       $('#receipt-error').textContent=error.message||'사진을 읽지 못했어요. 다시 찍거나 직접 입력해 주세요.';
+      $('#modal .receipt-intro').hidden=false;
+      $('#modal .receipt-editor')?.remove();
       $('#receipt-progress').hidden=true;$('#receipt-camera').disabled=false;$('#receipt-gallery').disabled=false;
       camera.value='';gallery.value='';reading=false;
     }
@@ -93,6 +102,7 @@ function expenseModal(id,templateId,receiptDraft) {
   setModal(`${modalHead(template?'RECURRING EXPENSE':'OUR EXPENSE',existing?'지출 수정':template?`${esc(template.name)} 등록`:'새 지출 기록')}<form id="expense-form">${!existing&&!template&&!receiptDraft?'<div class="receipt-entry"><button type="button" class="secondary full" id="receipt-start">영수증 찍어서 자동 입력</button></div>':''}${receiptDraft?`<div class="receipt-review notice"><strong>아직 저장되지 않았어요. 읽은 내용을 확인해 주세요.</strong>${receiptDraft.warnings.map(w=>`<p>${esc(w)}</p>`).join('')}<p>분류는 추정값이에요. 실제 지출에 맞게 선택해 주세요.</p><details><summary>인식한 원문 보기</summary><pre>${esc(receiptDraft.text)}</pre></details><p id="receipt-duplicate" class="warning" hidden></p></div>`:''}${template?'<div class="notice">실제 납부액과 지출일을 확인해 주세요. 같은 템플릿은 한 달에 한 번만 등록할 수 있어요.</div>':''}<div class="form-grid">${field('지출일',`<input name="spent_on" type="date" value="${e.spent_on}" max="${today()}" required>`)}${field('결제한 금액',`<div class="input-suffix"><input name="amount" type="number" min="1" max="1000000000" step="1" inputmode="numeric" placeholder="0" value="${e.amount}" required><span>원</span></div>`)}${field('분류',`<select name="category_id" required>${options(d.categories,e.category_id,'분류 선택')}</select>`)}${field('세부 항목',`<select name="item_id">${options(selectableItems(e.category_id,existing?.item_id),e.item_id,'선택 안 함')}</select>`)}${field('내역',`<input name="description" value="${esc(e.description)}" placeholder="예: 주말 장보기" maxlength="120" required>`,'span-2')}${field('결제자',`<select name="payer">${options(d.members,e.payer)}</select>`,'span-2')}</div><fieldset class="split-field"><legend>어떻게 나눌까요?</legend><div class="segmented">${[['equal','반반 50:50'],['custom','직접 지정'],['payer','결제자 전액']].map(([v,label])=>`<label><input type="radio" name="mode" value="${v}" ${v===mode?'checked':''}><span>${label}</span></label>`).join('')}</div><div class="form-grid share-inputs">${field(`${esc(memberName(1))} 부담액`,`<div class="input-suffix"><input name="share1" type="number" min="0" step="1" inputmode="numeric" value="${e.share1}" required><span>원</span></div>`)}${field(`${esc(memberName(2))} 부담액`,`<div class="input-suffix"><input name="share2" type="number" min="0" step="1" inputmode="numeric" value="${existing?e.amount-e.share1:0}" required><span>원</span></div>`)}</div><p id="split-hint" class="small muted"></p></fieldset>${field('메모 <small>선택</small>',`<textarea name="note" maxlength="1000" placeholder="함께 기억할 내용을 남겨주세요">${esc(e.note)}</textarea>`)}${receiptDraft?'<label class="receipt-confirm"><input type="checkbox" name="receipt_checked" required><span>날짜·금액·내역과 분류를 확인했어요.</span></label>':''}<div class="form-error" role="alert"></div><div class="modal-footer">${existing?`<button type="button" class="text-button danger" id="delete-expense">삭제</button>`:'<button type="button" class="secondary" data-action="close">취소</button>'}<button class="primary" type="submit">${existing?'변경 저장':'지출 등록'} ${icon('check',18)}</button></div></form>`);
   const form=$('#expense-form');
   if($('#receipt-start'))$('#receipt-start').onclick=receiptModal;
+  if(receiptDraft){const retry=document.createElement('button');retry.type='button';retry.className='secondary full';retry.textContent='다시 촬영·영역 조정';retry.onclick=receiptModal;form.querySelector('.receipt-review').append(retry);}
   if(receiptDraft?.photo){
     const photoUrl=URL.createObjectURL(receiptDraft.photo);
     const detail=document.createElement('details');detail.className='receipt-photo';
