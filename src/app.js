@@ -11,6 +11,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 const paths={grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',list:'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',swap:'M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',plus:'M12 5v14M5 12h14',arrow:'M5 12h14m-5-5 5 5-5 5',chevron:'m9 5 7 7-7 7',leaf:'M20 3C8 2 2 7 5 15c5 8 16 2 15-12ZM5 20l9-10',check:'m5 12 4 4L19 6',close:'m6 6 12 12M6 18 18 6',refresh:'M20 7a9 9 0 1 0 1 8M20 3v5h-5',wallet:'M3 6h16v15H3zM3 6V3h13M15 12h6v4h-6z',coffee:'M4 7h12v9a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4ZM16 8h2a3 3 0 1 1 0 6h-2M7 2v2M12 2v2',home:'m3 10 9-7 9 7M5 9v12h14V9M10 21v-7h4v7',bag:'M4 7h16l-1 14H5ZM8 7V5a4 4 0 0 1 8 0v2',heart:'M20 4c-3-3-7-1-8 2-1-3-5-5-8-2-4 5 2 11 8 16 6-5 12-11 8-16Z'};
 const icon=(name,size=20)=>`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.wallet}"/></svg>`;
 const state={page:'dashboard',month:today().slice(0,7),data:null,demo:false,filterCategory:'',filterPayer:'',busy:false};
+let lastSnapshot='',refreshRequest=0;
 const memberName=slot=>state.data?.members.find(m=>m.slot===Number(slot))?.name || `멤버 ${slot}`;
 const currentSlot=()=>state.data.members.find(m=>m.user_id===state.data.user.id)?.slot || 1;
 const category=id=>state.data.categories.find(c=>c.id===id);
@@ -47,6 +48,7 @@ async function nextLoginCat(button) {
   } finally {button.disabled=false;}
 }
 function login(message='') {
+  lastSnapshot='';refreshRequest++;
   $('#app').innerHTML=`<main class="auth-screen"><section class="auth-card" aria-labelledby="login-title"><header class="auth-heading"><button class="auth-mascot" type="button" data-action="next-cat" data-cat-index="0" aria-label="다음 고양이 보기 · 하트 동전을 안고 있는 고양이 (1/4)" title="눌러서 다음 고양이 보기"><img src="./icons/moaboja-cat-v1-512.png" width="144" height="144" alt="하트 동전을 안고 있는 고양이" fetchpriority="high"></button><h1 id="login-title">모아보자!</h1><p>화이팅!</p></header>${message?`<p class="notice warning" role="alert">${esc(message)}</p>`:''}<form id="login-form">${field('아이디','<input name="username" type="text" autocomplete="username" placeholder="아이디" required>')}${field('비밀번호','<input name="password" type="password" autocomplete="current-password" placeholder="비밀번호" required minlength="6">')}<button class="primary full" ${!configured?'disabled':''}>로그인</button></form><button class="text-button full" data-action="forgot" ${!configured?'disabled':''}>비밀번호 재설정</button><div class="auth-preview">${!configured?'<p>로그인 준비 중이에요. 먼저 둘러보세요.</p>':''}<button class="secondary full" data-action="demo">예시 데이터로 둘러보기</button></div></section></main>`;
 }
 function render() {
@@ -176,7 +178,20 @@ function settingModal(kind,id,categoryId) {
 }
 function confirmAction(title,description,fn,success) {setModal(`${modalHead('PLEASE CONFIRM',title)}<p class="muted">${description}</p><form id="confirm-form"><div class="form-error" role="alert"></div><div class="modal-footer"><button type="button" class="secondary" data-action="close">취소</button><button class="primary danger-fill">삭제</button></div></form>`);const form=$('#confirm-form');form.onsubmit=e=>{e.preventDefault();runForm(form,fn,success);};}
 async function mutate(name,args) {if(state.demo) demoMutation(state.data,name,args);else await rpc(name,args);}
-async function refresh(renderUI=true) {if(!state.demo) state.data=await snapshot();if(renderUI) render();}
+async function refresh() {
+  if(state.demo){render();return;}
+  const request=++refreshRequest;
+  const data=await snapshot();
+  if(request!==refreshRequest||state.demo)return;
+  // Compare the server snapshot before render() sorts categories. Auth metadata
+  // can change independently of the ledger; only the user ID affects this UI.
+  const signature=JSON.stringify({...data,user:{id:data.user.id}});
+  if(!state.data||signature!==lastSnapshot){
+    state.data=data;lastSnapshot=signature;render();
+  }else{
+    await $('travel-expenses')?.load();
+  }
+}
 async function runForm(form,fn,message) {
   if(state.busy)return; state.busy=true; const button=form.querySelector('button[type="submit"],button.primary');if(button)button.disabled=true;
   form.querySelector('.form-error').textContent='';
@@ -205,7 +220,7 @@ document.addEventListener('click',async event=>{
       case 'logout':if(!state.demo){const{error}=await client.auth.signOut();if(error)throw error;}state.data=null;state.demo=false;login();break;
       case 'add-expense':expenseModal();break;
       case 'transfer':transferModal();break;
-      case 'refresh':button.disabled=true;await refresh();toast('최신 내역을 불러왔어요.');break;
+      case 'refresh':button.disabled=true;try{await refresh();toast('최신 내역을 불러왔어요.');}finally{button.disabled=false;}break;
       case 'forgot':toast('이메일 없이 사용하는 계정이에요. 가계부 관리자에게 새 비밀번호 설정 링크를 요청해 주세요.');break;
     }
   }catch(e){button.disabled=false;showError(e);}
@@ -214,7 +229,7 @@ document.addEventListener('change',e=>{if(e.target.id==='month'&&/^\d{4}-\d{2}$/
 document.addEventListener('submit',async e=>{if(e.target.id!=='login-form')return;e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;try{const f=Object.fromEntries(new FormData(e.target));const{error}=await client.auth.signInWithPassword({email:loginEmail(f.username),password:f.password});if(error)throw new Error('아이디 또는 비밀번호를 확인해 주세요.');await refresh();}catch(error){showError(error);}finally{button.disabled=false;}});
 $('#modal').addEventListener('cancel',e=>{if(state.busy)e.preventDefault();else cleanModal();});
 $('#modal').addEventListener('close',cleanModal);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.data&&!state.demo&&!$('#modal').open)refresh().catch(showError);});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.data&&!state.demo&&!state.busy&&!$('#modal').open)refresh().catch(showError);});
 setInterval(()=>{if(state.data&&!state.demo&&!state.busy&&!$('#modal').open&&document.visibilityState==='visible')refresh().catch(()=>{});},30000);
 async function boot(){
   login(); if(!configured)return;

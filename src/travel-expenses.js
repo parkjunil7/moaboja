@@ -10,6 +10,8 @@ function categoryRank(row) {
   return index < 0 ? categoryOrder.length : index;
 }
 let travel;
+// Keep disclosure state across the ledger's periodic full-page renders.
+const expandedTrips = new Set();
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -18,19 +20,33 @@ function element(tag, text) {
 }
 
 class TravelExpenses extends HTMLElement {
+  tripDetails = new Map();
+
+  rememberExpandedTrips() {
+    for (const [key, details] of this.tripDetails) {
+      if (details.open) expandedTrips.add(key);
+      else expandedTrips.delete(key);
+    }
+  }
+
   connectedCallback() {
     this.className = 'panel travel-expenses';
-    this.refresh = () => {
-      if (!document.hidden) this.load();
-    };
-    document.addEventListener('visibilitychange', this.refresh);
     this.load();
   }
 
   disconnectedCallback() {
-    document.removeEventListener('visibilitychange', this.refresh);
+    this.rememberExpandedTrips();
     this.request?.abort();
     this.subscription?.unsubscribe();
+    this.subscription = null;
+  }
+
+  showBody(body, tripDetails = new Map()) {
+    // Read the live open state after fetching, including clicks during the request.
+    this.rememberExpandedTrips();
+    this.tripDetails = tripDetails;
+    for (const [key, details] of tripDetails) details.open = expandedTrips.has(key);
+    this.replaceChildren(element('h2', '여행별 지출'), element('p', '여행 전체 기간 · 정산 제외'), body);
   }
 
   async load() {
@@ -38,7 +54,7 @@ class TravelExpenses extends HTMLElement {
     const request = new AbortController();
     this.request = request;
     const body = element('div', '불러오는 중…');
-    this.replaceChildren(element('h2', '여행별 지출'), element('p', '여행 전체 기간 · 정산 제외'), body);
+    if (!this.childElementCount) this.showBody(body);
     try {
       travel ??= createClient('https://wphdhiowhivefokivfql.supabase.co',
         'sb_publishable_WtJZIOmD4Q6gSihH0xm2rw_ru_yf4Cy', {auth: {detectSessionInUrl: false}});
@@ -52,9 +68,12 @@ class TravelExpenses extends HTMLElement {
       if (error) throw error;
       this.needsLogin = !data.session;
       if (this.needsLogin) {
+        if (this.signature === 'signed-out') return;
         const link = element('a', '여행 사이트 로그인');
         link.href = 'https://parkjunil7.github.io/login.html?next=%2Fmoaboja%2F';
         body.replaceChildren(element('p', '이 브라우저에서 여행 계정으로 로그인하면 지출이 표시돼요.'), link);
+        this.signature = 'signed-out';
+        this.showBody(body);
         return;
       }
       const groups = new Map();
@@ -72,9 +91,13 @@ class TravelExpenses extends HTMLElement {
         if (rows.length < 200) break;
         offset += rows.length;
       }
+      const signature = JSON.stringify([data.session.user.id, [...groups]]);
+      if (signature === this.signature) return;
+      const tripDetails = new Map();
       body.textContent = groups.size ? '' : '등록된 여행 지출이 없어요.';
       for (const [key, rows] of groups) {
         const details = document.createElement('details');
+        tripDetails.set(key, details);
         const name = trips.has(key) ? trips.get(key) + ' ' + key.slice(-4) : key || '기타 여행';
         details.append(element('summary', name + ' · ' + rows.length + '건 · ' + won(rows.reduce((total,row) => total + row.amount, 0))));
         rows.sort((a, b) => categoryRank(a) - categoryRank(b));
@@ -87,12 +110,16 @@ class TravelExpenses extends HTMLElement {
         details.append(list);
         body.append(details);
       }
+      this.showBody(body, tripDetails);
+      this.signature = signature;
     } catch {
       if (request.signal.aborted) return;
       const retry = element('button', '다시 불러오기');
       retry.className = 'text-button';
       retry.onclick = () => this.load();
       body.replaceChildren(element('p', '여행 지출을 불러오지 못했어요.'), retry);
+      this.signature = null;
+      this.showBody(body);
     }
   }
 }
